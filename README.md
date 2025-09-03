@@ -133,7 +133,7 @@ MIT License. Смотри [LICENSE](LICENSE) в репозитории.
 
 ## Контакты
 
-Если что-то не работает или есть идеи, пиши в [Issues](https://github.com/Almazmsi/RoswellUltimate/issues) или в Telegram (укажи свой контакт, если хочешь).
+Если что-то не работает или есть идеи, пиши в [Issues](https://github.com/Almazmsi/RoswellUltimate/issues)
 
 ---
 

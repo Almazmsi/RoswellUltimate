@@ -1,14 +1,4 @@
-﻿# ============================================================
-# Roswell Ultimate 1.0.0 — MEGA installer
-# - проверка прав, точка восстановления
-# - winget (fallback -> choco), установка приложений (PowerShell 7, fastfetch)
-# - установка Nerd Fonts (FiraCode)
-# - включение прозрачности Windows Terminal
-# - создание профиля PowerShell: HUD, fastfetch, анимация
-# - алиасы: whoami, systemuac, trusteduac, update-profile, sysinfo
-# ============================================================
-
-# =============== CONFIG ===============
+﻿# =============== CONFIG ===============
 $ScriptStart = Get-Date
 $LogFile = Join-Path $env:USERPROFILE "roswell-ultimate-1.0.log"
 $ProfileBackupDir = Join-Path $env:USERPROFILE "roswell-backups"
@@ -474,7 +464,7 @@ function sysinfo {
     }
 }
 
-# === HUD: CPU / RAM / Disks / GPU bars with animation ===
+# === HUD: CPU / RAM / Disks / GPU bars with animation (manual trigger) ===
 function Get-GradientBar {
     param([int]$percent, [string]$label, [switch]$animate)
     try {
@@ -621,7 +611,6 @@ function disable-roswell-startup {
 }
 
 if (Test-Path $disableFile) {
-    Start-LiveHUD
     Write-Host "`nRoswell Ultimate profile loaded (1.0.0)"
 }
 else {
@@ -654,7 +643,6 @@ else {
         Write-Host "Fastfetch не доступен. Убедитесь, что он установлен (winget install Fastfetch-cli.Fastfetch)" -ForegroundColor Red
     }
     Write-Host "Roswell Ultimate 1.0.0 loaded! 🚀" -ForegroundColor Green
-    Start-LiveHUD
     Write-Host "`nRoswell Ultimate profile loaded (1.0.0)"
 }
 '@
