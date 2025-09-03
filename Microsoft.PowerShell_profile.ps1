@@ -70,7 +70,7 @@ function trusteduac {
 
 function update-profile {
     try {
-        $url = "https://raw.githubusercontent.com/Almazmsi/RoswellUltimate/main/Microsoft.PowerShell_profile.ps1"
+        $url = "https://raw.githubusercontent.com/Almazmsi/RoswellUltimate/refs/heads/main/Microsoft.PowerShell_profile.ps1"
         $lastCheck = "$env:USERPROFILE\.roswell_last_update"
         if (-not (Test-Path $lastCheck) -or ((Get-Date) - (Get-Item $lastCheck).LastWriteTime).TotalDays -gt 1) {
             $newProfile = Invoke-WebRequest -Uri $url -UseBasicParsing | Select-Object -ExpandProperty Content
