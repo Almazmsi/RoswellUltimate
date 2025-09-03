@@ -9,6 +9,22 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 
 $PSDefaultParameterValues['Out-Default:Verbose'] = $false
 $Version = "1.0.0"
+$LogFile = Join-Path $env:USERPROFILE "roswell-ultimate-1.0.log"
+
+function Log {
+    param([string]$Message, [string]$Level = "INFO")
+    $t = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $line = "[$t] [$Level] $Message"
+    switch ($Level) {
+        "INFO" { Write-Host $line -ForegroundColor Cyan }
+        "OK"   { Write-Host $line -ForegroundColor Green }
+        "WARN" { Write-Warning $line }
+        "ERR"  { Write-Host $line -ForegroundColor Red }
+        default { Write-Host $line }
+    }
+    if (-not (Test-Path (Split-Path $LogFile))) { New-Item -ItemType Directory -Path (Split-Path $LogFile) -Force | Out-Null }
+    Add-Content -Path $LogFile -Value $line.Replace("`e[", "").Replace("`e[0m", "")
+}
 
 # -- Oh My Posh init (if installed) --
 try {
@@ -37,40 +53,112 @@ function get-user-role {
 }
 
 function systemuac {
-    Write-Host "Запуск текущего скрипта как SYSTEM... (создаётся временная Scheduled Task)" -ForegroundColor Yellow
+    param([string]$ScriptPath = $MyInvocation.MyCommand.Definition)
+    Log "Запуск скрипта '$ScriptPath' как SYSTEM..." "INFO"
     $taskName = "Roswell_RunAsSystem_$([guid]::NewGuid().ToString())"
     try {
-        $time = (Get-Date).AddSeconds(30).ToString("HH:mm")
-        schtasks /Create /SC ONCE /TN $taskName /TR "powershell -NoProfile -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Definition)`"" /ST $time /RL HIGHEST /F /RU "SYSTEM" | Out-Null
+        $time = (Get-Date).AddSeconds(10).ToString("HH:mm")
+        $cmd = "pwsh -NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`""
+        schtasks /Create /SC ONCE /TN $taskName /TR "$cmd" /ST $time /RL HIGHEST /F /RU "SYSTEM" | Out-Null
+        Log "Задача '$taskName' создана, запуск через 10 секунд" "INFO"
         schtasks /Run /TN $taskName | Out-Null
-        Start-Sleep -Seconds 3
+        Start-Sleep -Seconds 5
+        $taskStatus = schtasks /Query /TN $taskName /FO CSV | ConvertFrom-Csv
+        if ($taskStatus.Status -eq "Running") {
+            Log "Задача '$taskName' успешно запущена" "OK"
+        } else {
+            Log "Задача '$taskName' не запустилась, статус: $($taskStatus.Status)" "ERR"
+            throw "Задача не выполняется"
+        }
+        Start-Sleep -Seconds 5
         schtasks /Delete /TN $taskName /F | Out-Null
-        Write-Host "Задача ${taskName} запущена и удалена" -ForegroundColor Green
+        Log "Задача '$taskName' удалена" "OK"
     }
     catch {
-        Write-Host "Не удалось запустить как SYSTEM: $($_.Exception.Message)" -ForegroundColor Red
+        Log "Ошибка запуска SYSTEM: $($_.Exception.Message)" "ERR"
+        throw
     }
 }
 
 function trusteduac {
-    Write-Host "Попытка запуска как TrustedInstaller (best-effort)..." -ForegroundColor Yellow
+    param([string]$ScriptPath = $MyInvocation.MyCommand.Definition)
+    Log "Попытка запуска скрипта '$ScriptPath' как TrustedInstaller..." "INFO"
     try {
+        $tool = $null
         if (Get-Command psexec -ErrorAction SilentlyContinue) {
-            & psexec -s -accepteula powershell -NoProfile -ExecutionPolicy Bypass -File $MyInvocation.MyCommand.Definition
-            Write-Host "Запущено через psexec -s" -ForegroundColor Green
+            $tool = "psexec"
+            Log "Найден PsExec, использую его для TrustedInstaller" "INFO"
+            & psexec -s -accepteula pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath
+            Log "Запуск через PsExec завершён" "OK"
             return
         }
-        systemuac
-        Write-Host "Запуск через SYSTEM завершён. Для TrustedInstaller используйте psexec или PowerRun." -ForegroundColor Yellow
+        elseif (Get-Command PowerRun -ErrorAction SilentlyContinue) {
+            $tool = "PowerRun"
+            Log "Найден PowerRun, использую его для TrustedInstaller" "INFO"
+            & PowerRun /SW:0 pwsh.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath
+            Log "Запуск через PowerRun завершён" "OK"
+            return
+        }
+        else {
+            Log "PsExec или PowerRun не найдены, пробую запуск как SYSTEM" "WARN"
+            systemuac -ScriptPath $ScriptPath
+            Log "Запуск через SYSTEM завершён. Для TrustedInstaller установите PsExec или PowerRun." "WARN"
+        }
     }
     catch {
-        Write-Host "Ошибка при попытке запуска TrustedInstaller: $($_.Exception.Message)" -ForegroundColor Red
+        Log "Ошибка запуска TrustedInstaller: $($_.Exception.Message)" "ERR"
+        throw
+    }
+}
+
+function elevate {
+    param(
+        [Parameter(ParameterSetName="Admin")]
+        [switch]$AsAdmin,
+        [Parameter(ParameterSetName="System")]
+        [switch]$AsSystem,
+        [Parameter(ParameterSetName="TrustedInstaller")]
+        [switch]$AsTrustedInstaller,
+        [string]$ScriptPath = $MyInvocation.MyCommand.Definition
+    )
+    Log "Запуск elevate для '$ScriptPath'..." "INFO"
+    $currentRole = get-user-role
+    Log "Текущая роль: $currentRole" "INFO"
+    
+    if ($AsAdmin) {
+        Log "Запрашиваю права администратора..." "INFO"
+        try {
+            $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+            if ($isAdmin) {
+                Log "Уже администратор, запуск не требуется" "OK"
+                return
+            }
+            Log "Запускаю PowerShell с UAC..." "INFO"
+            Start-Process -FilePath "pwsh.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`"" -Verb RunAs
+            Log "Запрос UAC отправлен, проверьте окно" "OK"
+        }
+        catch {
+            Log "Ошибка при запросе админ-прав: $($_.Exception.Message)" "ERR"
+            throw
+        }
+    }
+    elseif ($AsSystem) {
+        Log "Передаю управление в функцию systemuac..." "INFO"
+        systemuac -ScriptPath $ScriptPath
+    }
+    elseif ($AsTrustedInstaller) {
+        Log "Передаю управление в функцию trusteduac..." "INFO"
+        trusteduac -ScriptPath $ScriptPath
+    }
+    else {
+        Log "Не указан режим повышения прав. Используйте -AsAdmin, -AsSystem или -AsTrustedInstaller" "ERR"
+        throw "Не указан режим повышения прав"
     }
 }
 
 function update-profile {
     try {
-        $url = "https://raw.githubusercontent.com/Almazmsi/RoswellUltimate/refs/heads/main/Microsoft.PowerShell_profile.ps1"
+        $url = "https://raw.githubusercontent.com/Almazmsi/RoswellUltimate/main/Microsoft.PowerShell_profile.ps1"
         $lastCheck = "$env:USERPROFILE\.roswell_last_update"
         if (-not (Test-Path $lastCheck) -or ((Get-Date) - (Get-Item $lastCheck).LastWriteTime).TotalDays -gt 1) {
             $newProfile = Invoke-WebRequest -Uri $url -UseBasicParsing | Select-Object -ExpandProperty Content
@@ -112,7 +200,7 @@ function sysinfo {
     }
 }
 
-# === HUD: CPU / RAM / Disks / GPU bars with animation ===
+# === HUD: CPU / RAM / Disks / GPU bars with animation (manual trigger) ===
 function Get-GradientBar {
     param([int]$percent, [string]$label, [switch]$animate)
     try {
@@ -198,8 +286,11 @@ function Start-LiveHUD {
                 $global:HUDTimer.Dispose()
             }
         } -SupportEvent
+        Log "Live HUD запущен" "OK"
     }
-    catch { }
+    catch {
+        Log "Ошибка запуска Live HUD: $($_.Exception.Message)" "ERR"
+    }
 }
 
 # === Prompt ===
