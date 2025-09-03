@@ -1,28 +1,24 @@
 ﻿# ============================================================
-# Roswell Ultimate — MEGA installer (big, verbose, sexy, with animations and extended HUD)
-# - проверка прав, точка восстановления (с подтверждением)
-# - winget (fallback -> choco), установка приложений (PowerShell 7, fastfetch, neofetch)
+# Roswell Ultimate 1.0.0 — MEGA installer
+# - проверка прав, точка восстановления
+# - winget (fallback -> choco), установка приложений (PowerShell 7, fastfetch)
 # - установка Nerd Fonts (FiraCode)
-# - включение прозрачности Windows Terminal (backup config)
-# - создание богатого профиля PowerShell: HUD с анимацией, fastfetch/neofetch, алиасы
+# - включение прозрачности Windows Terminal
+# - создание профиля PowerShell: HUD, fastfetch, анимация
 # - алиасы: whoami, systemuac, trusteduac, update-profile, sysinfo
-# - расширенный HUD: CPU, RAM, диски, GPU
-# - стартовая анимация с ASCII-арт
-# - интерактивное меню с fastfetch и настройкой Terminal
-# - улучшенное логирование (ISO 8601, без ANSI в файле)
 # ============================================================
 
 # =============== CONFIG ===============
 $ScriptStart = Get-Date
-$LogFile = Join-Path $env:USERPROFILE "roswell-ultimate-5.1.log"
+$LogFile = Join-Path $env:USERPROFILE "roswell-ultimate-1.0.log"
 $ProfileBackupDir = Join-Path $env:USERPROFILE "roswell-backups"
 $ProfilePath = $PROFILE
 $WTSettingsPaths = @(
     "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json",
     "$env:LOCALAPPDATA\Microsoft\Windows Terminal\settings.json"
 )
-$ProfileUpdateURL = "https://raw.githubusercontent.com/almazmsi/RoswellUltimate/main/profile.ps1"
-$Version = "5.1.2"
+$ProfileUpdateURL = "https://raw.githubusercontent.com/Almazmsi/RoswellUltimate/main/Microsoft.PowerShell_profile.ps1"
+$Version = "1.0.0"
 
 # ensure log dir exists
 if (-not (Test-Path (Split-Path $LogFile))) { New-Item -ItemType Directory -Path (Split-Path $LogFile) -Force | Out-Null }
@@ -43,10 +39,10 @@ function Log {
 }
 
 # --------------------------- 
-# 0) Interactive Menu for Actions
+# 0) Interactive Menu
 # ---------------------------
 function Show-Menu {
-    Write-Host "Добро пожаловать в Roswell Ultimate Installer!" -ForegroundColor Magenta
+    Write-Host "Добро пожаловать в Roswell Ultimate 1.0.0 Installer!" -ForegroundColor Magenta
     Write-Host "Выберите действия (можно несколько, через запятую, или 'all' для всех):"
     Write-Host "1. Очистка предыдущих установок"
     Write-Host "2. Установка пакетов (PowerShell, Terminal, fastfetch, etc.)"
@@ -54,7 +50,7 @@ function Show-Menu {
     Write-Host "4. Настройка прозрачности Windows Terminal"
     Write-Host "5. Установка/обновление профиля PowerShell"
     Write-Host "6. Установка fastfetch"
-    Write-Host "7. Настройка Windows Terminal по умолчанию на PowerShell"
+    Write-Host "7. Настройка Windows Terminal на PowerShell 7"
     Write-Host "0. Выход"
     $choice = Read-Host "Ваш выбор (например, 1,3,5 или all)"
     return $choice
@@ -65,14 +61,14 @@ if ($menuChoice -eq "0") { Log "Пользователь выбрал выход
 $actions = if ($menuChoice -eq "all") { 1..7 } else { $menuChoice -split "," | ForEach-Object { [int]$_ } }
 
 # --------------------------- 
-# 1) Ensure run as Administrator (UAC restart if needed)
+# 1) Ensure Admin
 # ---------------------------
 function Ensure-Admin {
     $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if (-not $isAdmin) {
         Log "Нет прав администратора — перезапускаю через UAC..." "WARN"
         $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" 
-        Start-Process -FilePath "powershell.exe" -ArgumentList $arg -Verb RunAs
+        Start-Process -FilePath "pwsh.exe" -ArgumentList $arg -Verb RunAs
         exit 0
     } else {
         Log "Запуск с правами администратора" "OK"
@@ -81,7 +77,7 @@ function Ensure-Admin {
 Ensure-Admin
 
 # --------------------------- 
-# 2) Create restore point (with confirmation)
+# 2) Create restore point
 # ---------------------------
 function Ask-YesNo($msg) {
     do {
@@ -91,11 +87,11 @@ function Ask-YesNo($msg) {
 }
 
 if ($actions -contains 2 -or $actions -contains 1) {
-    if (Ask-YesNo "Создать точку восстановления системы? (Рекомендуется для безопасности)") {
+    if (Ask-YesNo "Создать точку восстановления системы? (Рекомендуется)") {
         function Create-RestorePoint {
             try {
                 Enable-ComputerRestore -Drive "C:" -ErrorAction SilentlyContinue
-                Checkpoint-Computer -Description "Before Roswell Ultimate" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+                Checkpoint-Computer -Description "Before Roswell Ultimate 1.0.0" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
                 Log "Точка восстановления создана" "OK"
             } catch {
                 Log "Не удалось создать точку восстановления: $($_.Exception.Message)" "WARN"
@@ -108,12 +104,12 @@ if ($actions -contains 2 -or $actions -contains 1) {
 }
 
 # --------------------------- 
-# 3) Cleanup previous installs and profiles (if selected)
+# 3) Cleanup previous installs
 # ---------------------------
 if ($actions -contains 1) {
     Log "Запускаю чистку предыдущих установок..." "INFO"
     if (Ask-YesNo "Удалять старые установки (winget apps, шрифты, профиль)?") {
-        $appsToRemove = @("Microsoft.PowerShell","Microsoft.WindowsTerminal","JanDeDobbeleer.OhMyPosh","nepnep.neofetch-win","Fastfetch-cli.Fastfetch")
+        $appsToRemove = @("Microsoft.PowerShell","Microsoft.WindowsTerminal","JanDeDobbeleer.OhMyPosh","Fastfetch-cli.Fastfetch","Git.Git")
         foreach ($app in $appsToRemove) {
             try {
                 $installed = $null
@@ -149,7 +145,7 @@ if ($actions -contains 1) {
 }
 
 # --------------------------- 
-# 4) Ensure winget or fallbacks (choco)
+# 4) Ensure winget or choco
 # ---------------------------
 function Ensure-Winget-Or-Choco {
     if (Get-Command winget -ErrorAction SilentlyContinue) {
@@ -193,7 +189,7 @@ function Ensure-Winget-Or-Choco {
 $pkgManager = Ensure-Winget-Or-Choco
 
 # --------------------------- 
-# 5) Install common apps (if selected)
+# 5) Install common apps
 # ---------------------------
 if ($actions -contains 2) {
     function Install-Package-By-Manager {
@@ -204,15 +200,14 @@ if ($actions -contains 2) {
                 winget install --id $pkgId -e --silent --accept-source-agreements --accept-package-agreements | Out-Null
                 Log "winget: ${pkgId} установлен (или уже был)" "OK"
                 $cmdName = ($pkgId -split "\.")[-1].ToLower()
-                if ($cmdName -eq "fastfetch" -or $cmdName -eq "neofetch") {
+                if ($cmdName -eq "fastfetch") {
                     if (Get-Command $cmdName -ErrorAction SilentlyContinue) {
                         Log "$cmdName доступен в PATH" "OK"
                     } else {
                         Log "$cmdName не найден в PATH. Проверяю..." "WARN"
                         $possiblePaths = @(
                             "C:\Program Files\Fastfetch\fastfetch.exe",
-                            "C:\ProgramData\chocolatey\bin\$cmdName.exe",
-                            "C:\Program Files\$cmdName\$cmdName.exe"
+                            "C:\ProgramData\chocolatey\bin\$cmdName.exe"
                         )
                         foreach ($path in $possiblePaths) {
                             if (Test-Path $path) {
@@ -248,7 +243,6 @@ if ($actions -contains 2) {
         @{ id="Microsoft.PowerShell"; choco="powershell-core" },
         @{ id="Microsoft.WindowsTerminal"; choco="microsoft-windows-terminal" },
         @{ id="JanDeDobbeleer.OhMyPosh"; choco="oh-my-posh" },
-        @{ id="nepnep.neofetch-win"; choco="neofetch" },
         @{ id="Fastfetch-cli.Fastfetch"; choco="fastfetch" },
         @{ id="Git.Git"; choco="git" }
     )
@@ -264,14 +258,14 @@ if ($actions -contains 2) {
 }
 
 # --------------------------- 
-# 6) Install fastfetch (if selected)
+# 6) Install fastfetch
 # ---------------------------
 if ($actions -contains 6) {
     Install-Package-By-Manager -pkgId "Fastfetch-cli.Fastfetch" -chocoName "fastfetch"
 }
 
 # --------------------------- 
-# 7) Install Nerd Fonts (FiraCode) (if selected)
+# 7) Install Nerd Fonts
 # ---------------------------
 if ($actions -contains 3) {
     function Install-NerdFonts-FiraCode {
@@ -296,7 +290,7 @@ if ($actions -contains 3) {
 }
 
 # --------------------------- 
-# 8) Enable transparency in Windows Terminal (if selected)
+# 8) Enable WT transparency
 # ---------------------------
 if ($actions -contains 4) {
     function Enable-WT-Transparency {
@@ -330,7 +324,7 @@ if ($actions -contains 4) {
 }
 
 # --------------------------- 
-# 9) Configure Windows Terminal default profile (if selected)
+# 9) Configure WT default profile
 # ---------------------------
 if ($actions -contains 7) {
     function Set-WT-DefaultProfile {
@@ -361,47 +355,13 @@ if ($actions -contains 7) {
 }
 
 # --------------------------- 
-# 10) Functions for alias escalation
+# 10) Install profile
 # ---------------------------
-function Run-As-System {
-    param([string]$ScriptPath = $PSCommandPath)
-    $taskName = "Roswell_RunAsSystem_$([guid]::NewGuid().ToString())"
-    try {
-        $time = (Get-Date).AddSeconds(30).ToString("HH:mm")
-        $create = schtasks /Create /SC ONCE /TN $taskName /TR "powershell -NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`"" /ST $time /RL HIGHEST /F /RU "SYSTEM"
-        Log "Создана временная задача ${taskName} для запуска как SYSTEM (через schtasks)" "INFO"
-        schtasks /Run /TN $taskName | Out-Null
-        Start-Sleep -Seconds 3
-        schtasks /Delete /TN $taskName /F | Out-Null
-        Log "Задача ${taskName} запущена и удалена" "OK"
-    } catch {
-        Log "Не удалось запустить как SYSTEM через schtasks: $($_.Exception.Message)" "WARN"
-    }
-}
-
-function Run-As-TrustedInstaller {
-    param([string]$ScriptPath = $PSCommandPath)
-    Log "Попытка запустить как TrustedInstaller (best-effort)..." "INFO"
-    try {
-        if (Get-Command psexec -ErrorAction SilentlyContinue) {
-            & psexec -s -accepteula powershell -NoProfile -ExecutionPolicy Bypass -File $ScriptPath
-            Log "Запущено через psexec -s (если psexec доступен)" "OK"
-            return
-        }
-        Run-As-System -ScriptPath $ScriptPath
-        Log "Запуск через SYSTEM завершён. Если нужен TrustedInstaller, используйте специализированные инструменты (psexec, PowerRun и др.)" "WARN"
-    } catch {
-        Log "Ошибка при попытке запуска TrustedInstaller: $($_.Exception.Message)" "WARN"
-    }
-}
-
-# --------------------------- 
-# 11) Build the PowerShell profile content
-# ---------------------------
-function Get-Profile-Template {
+if ($actions -contains 5) {
+    function Get-Profile-Template {
 @'
 # ====================================================
-# Roswell Ultimate — PowerShell profile (auto-generated)
+# Roswell Ultimate 1.0.0 — PowerShell profile (auto-generated)
 # ====================================================
 
 if ($PSVersionTable.PSVersion.Major -lt 7) {
@@ -410,38 +370,69 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 }
 
 $PSDefaultParameterValues['Out-Default:Verbose'] = $false
-$Version = "5.1.2"
+$Version = "1.0.0"
 
 # -- Oh My Posh init (if installed) --
 try {
     oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\paradox.omp.json" | Invoke-Expression
-} catch { }
+}
+catch { }
 
 # -- posh-git --
-try { Import-Module posh-git -ErrorAction SilentlyContinue } catch { }
+try { Import-Module posh-git -ErrorAction SilentlyContinue }
+catch { }
 
 # -- PSReadLine --
-try { Set-PSReadlineOption -PredictionSource History } catch {}
+try { Set-PSReadlineOption -PredictionSource History }
+catch {}
 
 # === Aliases & Escalation helpers ===
 function whoami {
-    try { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name } catch { & whoami.exe }
+    try { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name }
+    catch { & whoami.exe }
 }
+
 function get-user-role {
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if ($isAdmin) { "Administrator" } else { "User" }
+    if ($isAdmin) { "Administrator" }
+    else { "User" }
 }
+
 function systemuac {
     Write-Host "Запуск текущего скрипта как SYSTEM... (создаётся временная Scheduled Task)" -ForegroundColor Yellow
-    Run-As-System -ScriptPath $MyInvocation.MyCommand.Definition
+    $taskName = "Roswell_RunAsSystem_$([guid]::NewGuid().ToString())"
+    try {
+        $time = (Get-Date).AddSeconds(30).ToString("HH:mm")
+        schtasks /Create /SC ONCE /TN $taskName /TR "powershell -NoProfile -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Definition)`"" /ST $time /RL HIGHEST /F /RU "SYSTEM" | Out-Null
+        schtasks /Run /TN $taskName | Out-Null
+        Start-Sleep -Seconds 3
+        schtasks /Delete /TN $taskName /F | Out-Null
+        Write-Host "Задача ${taskName} запущена и удалена" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "Не удалось запустить как SYSTEM: $($_.Exception.Message)" -ForegroundColor Red
+    }
 }
+
 function trusteduac {
     Write-Host "Попытка запуска как TrustedInstaller (best-effort)..." -ForegroundColor Yellow
-    Run-As-TrustedInstaller -ScriptPath $MyInvocation.MyCommand.Definition
+    try {
+        if (Get-Command psexec -ErrorAction SilentlyContinue) {
+            & psexec -s -accepteula powershell -NoProfile -ExecutionPolicy Bypass -File $MyInvocation.MyCommand.Definition
+            Write-Host "Запущено через psexec -s" -ForegroundColor Green
+            return
+        }
+        systemuac
+        Write-Host "Запуск через SYSTEM завершён. Для TrustedInstaller используйте psexec или PowerRun." -ForegroundColor Yellow
+    }
+    catch {
+        Write-Host "Ошибка при попытке запуска TrustedInstaller: $($_.Exception.Message)" -ForegroundColor Red
+    }
 }
+
 function update-profile {
     try {
-        $url = "https://raw.githubusercontent.com/almazmsi/RoswellUltimate/main/profile.ps1"
+        $url = "https://raw.githubusercontent.com/Almazmsi/RoswellUltimate/main/Microsoft.PowerShell_profile.ps1"
         $lastCheck = "$env:USERPROFILE\.roswell_last_update"
         if (-not (Test-Path $lastCheck) -or ((Get-Date) - (Get-Item $lastCheck).LastWriteTime).TotalDays -gt 1) {
             $newProfile = Invoke-WebRequest -Uri $url -UseBasicParsing | Select-Object -ExpandProperty Content
@@ -452,31 +443,36 @@ function update-profile {
                     $newProfile | Set-Content -Path $PROFILE -Encoding UTF8
                     . $PROFILE
                     Set-Content -Path $lastCheck -Value (Get-Date).ToString()
-                } else {
+                }
+                else {
                     Write-Host "Профиль уже актуален (версия $Version)" -ForegroundColor Cyan
                     Set-Content -Path $lastCheck -Value (Get-Date).ToString()
                 }
-            } else {
+            }
+            else {
                 Write-Host "Не удалось определить версию в новом профиле" -ForegroundColor Red
             }
         }
-    } catch {
+    }
+    catch {
         Write-Host "Ошибка обновления профиля: $($_.Exception.Message)" -ForegroundColor Red
     }
 }
+
 function sysinfo {
     try {
         $fastfetchPath = "C:\Program Files\Fastfetch\fastfetch.exe"
         if (Test-Path $fastfetchPath) {
             & $fastfetchPath --logo windows --color blue --structure os:kernel:cpu:memory:disk:gpu
-        } else {
+        }
+        else {
             fastfetch --logo windows --color blue --structure os:kernel:cpu:memory:disk:gpu
         }
-    } catch {
-        try { neofetch } catch { Write-Host "Fastfetch/neofetch не доступен..." }
+    }
+    catch {
+        Write-Host "Fastfetch не доступен. Убедитесь, что он установлен (winget install Fastfetch-cli.Fastfetch)" -ForegroundColor Red
     }
 }
-Set-Alias neofetch sysinfo -ErrorAction SilentlyContinue
 
 # === HUD: CPU / RAM / Disks / GPU bars with animation ===
 function Get-GradientBar {
@@ -484,23 +480,32 @@ function Get-GradientBar {
     try {
         if ($Host.UI.RawUI -and $Host.UI.RawUI.WindowSize.Width -gt 0) {
             $blocks = [math]::Max(10, [math]::Floor($Host.UI.RawUI.WindowSize.Width / 4))
-        } else {
+        }
+        else {
             $blocks = 20
         }
-    } catch { $blocks = 20 }
+    }
+    catch { $blocks = 20 }
     $filled = [math]::Round($percent / 100 * $blocks)
     $bar = ""
     $symbols = @("▏", "▎", "▍", "▌", "▋", "▊", "▉", "█")
     for ($i = 0; $i -lt $blocks; $i++) {
         if ($i -lt $filled) {
-            $color = switch ($percent) { { $_ -lt 30 } { 34 } { $_ -lt 50 } { 46 } { $_ -lt 80 } { 226 } default { 196 } }
+            $color = switch ($percent) {
+                { $_ -lt 30 } { 34 }
+                { $_ -lt 50 } { 46 }
+                { $_ -lt 80 } { 226 }
+                default { 196 }
+            }
             if ($animate -and $i -eq ($filled - 1)) {
                 $index = ([math]::Floor((Get-Date).Millisecond / 125) % 8)
                 $bar += "`e[38;5;${color}m$($symbols[$index])`e[0m"
-            } else {
+            }
+            else {
                 $bar += "`e[38;5;${color}m█`e[0m"
             }
-        } else {
+        }
+        else {
             $bar += " "
         }
     }
@@ -508,13 +513,15 @@ function Get-GradientBar {
 }
 
 function Get-SystemBars {
-    try { $cpu = [math]::Round((Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples[0].CookedValue) } catch { $cpu = 0 }
+    try { $cpu = [math]::Round((Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples[0].CookedValue) }
+    catch { $cpu = 0 }
     $cpuBar = Get-GradientBar -percent $cpu -label "💻 CPU" -animate
     try {
         $mem = [math]::Round((Get-CimInstance Win32_OperatingSystem | ForEach-Object {
             ($_.TotalVisibleMemorySize - $_.FreePhysicalMemory) / $_.TotalVisibleMemorySize * 100
         }))
-    } catch { $mem = 0 }
+    }
+    catch { $mem = 0 }
     $memBar = Get-GradientBar -percent $mem -label "🧠 RAM" -animate
     $diskBars = ""
     try {
@@ -524,7 +531,8 @@ function Get-SystemBars {
                 $diskBars += "`n" + (Get-GradientBar -percent $diskPercent -label "💿 $($_.Name)" -animate)
             }
         }
-    } catch { $diskBars = "`n💿 Disks: N/A" }
+    }
+    catch { $diskBars = "`n💿 Disks: N/A" }
     return "$cpuBar  $memBar$diskBars"
 }
 
@@ -533,7 +541,7 @@ function Start-LiveHUD {
         $global:HUDTimer = New-Object System.Timers.Timer
         $global:HUDTimer.Interval = 1000
         $global:HUDTimer.AutoReset = $true
-        $global:HUDTimer.Add_Elapsed({
+        Register-ObjectEvent -InputObject $global:HUDTimer -EventName Elapsed -Action {
             try {
                 $cursor = $host.UI.RawUI.CursorPosition
                 $bottom = $host.UI.RawUI.WindowSize.Height - 5
@@ -542,11 +550,18 @@ function Start-LiveHUD {
                 $sysBars = Get-SystemBars
                 Write-Host "$sysBars" -NoNewline
                 $host.UI.RawUI.CursorPosition = $cursor
-            } catch { }
-        })
+            }
+            catch { }
+        } | Out-Null
         $global:HUDTimer.Start()
-        Register-EngineEvent PowerShell.Exiting -Action { if ($global:HUDTimer) { $global:HUDTimer.Stop(); $global:HUDTimer.Dispose() } } -SupportEvent
-    } catch { }
+        Register-EngineEvent PowerShell.Exiting -Action {
+            if ($global:HUDTimer) {
+                $global:HUDTimer.Stop()
+                $global:HUDTimer.Dispose()
+            }
+        } -SupportEvent
+    }
+    catch { }
 }
 
 # === Prompt ===
@@ -556,7 +571,8 @@ function prompt {
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     $flag = if ($isAdmin) { "⚡" } else { "" }
     $branch = ""
-    try { $branch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim() } catch { }
+    try { $branch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim() }
+    catch { }
     $gitPart = if ($branch) { "  $branch" } else { "" }
     "$flag [$time]$gitPart `n📂 $(Get-Location)> "
 }
@@ -564,7 +580,7 @@ function prompt {
 # === Startup Animation ===
 function Show-StartupAnimation {
     Write-Host "Запускаю анимацию Roswell Ultimate..." -ForegroundColor Yellow
-    $text = "Loading Roswell Ultimate..."
+    $text = "Loading Roswell Ultimate 1.0.0..."
     $max = 100
     Clear-Host
     Write-Host "`n"
@@ -578,12 +594,12 @@ function Show-StartupAnimation {
     for ($p = 0; $p -le $max; $p += 5) {
         $bar = Get-GradientBar -percent $p -label $text -animate
         Write-Host $bar
-        Start-Sleep -Milliseconds 100
+        Start-Sleep -Milliseconds 150
         if ($p -lt $max) {
             [Console]::SetCursorPosition(0, [Console]::CursorTop - 1)
         }
     }
-    Write-Host "Roswell Ultimate loaded! 🚀" -ForegroundColor Green
+    Write-Host "Roswell Ultimate 1.0.0 loaded! 🚀" -ForegroundColor Green
     [Console]::Beep(500, 200)
 }
 
@@ -591,8 +607,8 @@ function Show-StartupAnimation {
 $flagFile = "$env:USERPROFILE\.roswell_first_run"
 $disableFile = "$env:USERPROFILE\.roswell_disable_startup"
 $animationFile = "$env:USERPROFILE\.roswell_animation_enabled"
-$author = "Автор: github.com/almazmsi"
-$repo = "Репозитория: github.com/almazmsi/RoswellUltimate"
+$author = "Автор: github.com/Almazmsi"
+$repo = "Репозитория: github.com/Almazmsi/RoswellUltimate"
 
 function enable-roswell-animation {
     Set-Content -Path $animationFile -Value "enabled"
@@ -606,11 +622,17 @@ function disable-roswell-startup {
 
 if (Test-Path $disableFile) {
     Start-LiveHUD
-    Write-Host "`nRoswell Ultimate profile loaded (5.1.2)"
-} else {
+    Write-Host "`nRoswell Ultimate profile loaded (1.0.0)"
+}
+else {
     Write-Host "Загружаю профиль в PowerShell $PSVersionTable.PSVersion" -ForegroundColor Yellow
     if (-not (Test-Path $flagFile) -or (Test-Path $animationFile)) {
-        Show-StartupAnimation
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            Show-StartupAnimation
+        }
+        else {
+            Write-Host "Анимация отключена: требуется PowerShell 7 для поддержки UTF-8 и ANSI" -ForegroundColor Red
+        }
         if (-not (Test-Path $flagFile)) {
             Write-Host $author -ForegroundColor Magenta
             Write-Host $repo -ForegroundColor Magenta
@@ -623,23 +645,21 @@ if (Test-Path $disableFile) {
         $fastfetchPath = "C:\Program Files\Fastfetch\fastfetch.exe"
         if (Test-Path $fastfetchPath) {
             & $fastfetchPath --logo windows --color blue --structure os:kernel:cpu:memory:disk:gpu
-        } else {
+        }
+        else {
             fastfetch --logo windows --color blue --structure os:kernel:cpu:memory:disk:gpu
         }
-    } catch {
-        try { neofetch } catch { Write-Host "Fastfetch/neofetch не доступен..." }
     }
-    Write-Host "Roswell Ultimate loaded! 🚀" -ForegroundColor Green
+    catch {
+        Write-Host "Fastfetch не доступен. Убедитесь, что он установлен (winget install Fastfetch-cli.Fastfetch)" -ForegroundColor Red
+    }
+    Write-Host "Roswell Ultimate 1.0.0 loaded! 🚀" -ForegroundColor Green
     Start-LiveHUD
-    Write-Host "`nRoswell Ultimate profile loaded"
+    Write-Host "`nRoswell Ultimate profile loaded (1.0.0)"
 }
 '@
-}
+    }
 
-# --------------------------- 
-# 12) Install profile (if selected)
-# ---------------------------
-if ($actions -contains 5) {
     $installProfile = Ask-YesNo "Установить/обновить стандартный профиль Roswell Ultimate сейчас?"
     if ($installProfile) {
         try {
@@ -651,42 +671,48 @@ if ($actions -contains 5) {
                 if ($PSVersionTable.PSVersion.Major -ge 7) {
                     . $PROFILE
                     Log "Профиль успешно загружен" "OK"
-                } else {
+                }
+                else {
                     Log "Профиль не загружен: требуется PowerShell 7 или выше" "WARN"
                 }
-            } catch {
+            }
+            catch {
                 Log "Ошибка загрузки профиля: $($_.Exception.Message)" "ERR"
             }
-        } catch {
+        }
+        catch {
             Log "Ошибка записи профиля: $($_.Exception.Message)" "ERR"
         }
-    } else {
+    }
+    else {
         $templatePath = Join-Path $ProfileBackupDir "roswell-profile-template.ps1"
         try {
             $tpl = Get-Profile-Template
             [System.IO.File]::WriteAllText($templatePath, $tpl, (New-Object System.Text.UTF8Encoding($false)))
             Log "Профиль не установлен. Шаблон сохранён в ${templatePath}" "WARN"
             Write-Host "Если захотите, откройте шаблон: notepad $templatePath"
-        } catch {
+        }
+        catch {
             Log "Ошибка при сохранении шаблона: $($_.Exception.Message)" "WARN"
         }
     }
 }
 
 # --------------------------- 
-# 13) Ensure Execution Policy
+# 11) Ensure Execution Policy
 # ---------------------------
 try {
     if ((Get-ExecutionPolicy -Scope CurrentUser) -eq "Restricted") {
         Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
         Log "ExecutionPolicy установлен в RemoteSigned" "OK"
     }
-} catch {
+}
+catch {
     Log "Ошибка настройки ExecutionPolicy: $($_.Exception.Message)" "WARN"
 }
 
 # --------------------------- 
-# 14) Ensure PowerShell 7 profile path
+# 12) Ensure PowerShell 7 profile path
 # ---------------------------
 try {
     if ($PSVersionTable.PSVersion.Major -lt 7) {
@@ -704,15 +730,16 @@ try {
         [System.IO.File]::WriteAllText($ps7Profile, $tpl, $utf8NoBom)
         Log "Профиль для PowerShell 7 успешно записан в $ps7Profile" "OK"
     }
-} catch {
+}
+catch {
     Log "Ошибка настройки профиля PowerShell 7: $($_.Exception.Message)" "ERR"
 }
 
 # --------------------------- 
-# 15) Final message and exit
+# 13) Final message
 # ---------------------------
 $elapsed = (Get-Date) - $ScriptStart
-Log "Roswell Ultimate завершён. Время: $($elapsed.ToString())" "OK"
+Log "Roswell Ultimate 1.0.0 завершён. Время: $($elapsed.ToString())" "OK"
 Write-Host ""
 Write-Host "🎉 Установка завершена. Запустите 'pwsh' или перезапустите Windows Terminal. Скрипт закроется через 10 секунд..." -ForegroundColor Green
 Start-Sleep -Seconds 10
